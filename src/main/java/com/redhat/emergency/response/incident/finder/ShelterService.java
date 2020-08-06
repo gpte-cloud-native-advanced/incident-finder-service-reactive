@@ -32,12 +32,10 @@ public class ShelterService {
     void onStart(@Observes StartupEvent e) {
         int servicePort = serviceUrl.contains(":") ? Integer.parseInt(serviceUrl.substring(serviceUrl.indexOf(":") + 1)) : 8080;
         String serviceHost = serviceUrl.contains(":") ? serviceUrl.substring(0, serviceUrl.indexOf(":")) : serviceUrl;
-        client = WebClient.create(vertx, new WebClientOptions().setDefaultHost(serviceHost).setDefaultPort(servicePort));
+        client = WebClient.create(vertx, new WebClientOptions().setDefaultHost(serviceHost).setDefaultPort(servicePort).setMaxPoolSize(100).setHttp2MaxPoolSize(100));
     }
 
     public Uni<JsonArray> shelters() {
-
-
         return client.get("/shelters").send().onItem().apply(resp -> {
             if (resp.statusCode() != 200) {
                 log.error("Error when calling disaster service. Return code " + resp.statusCode());

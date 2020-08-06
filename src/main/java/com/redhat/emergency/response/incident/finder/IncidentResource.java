@@ -1,25 +1,28 @@
 package com.redhat.emergency.response.incident.finder;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
-import javax.ws.rs.GET;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
-import javax.ws.rs.QueryParam;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
 
-import io.smallrye.mutiny.Multi;
+import io.quarkus.vertx.web.Route;
+import io.quarkus.vertx.web.RoutingExchange;
 import io.smallrye.mutiny.Uni;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.mutiny.core.Vertx;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Path("/")
+@ApplicationScoped
 public class IncidentResource {
 
     private static final Logger log = LoggerFactory.getLogger(IncidentResource.class);
+
+    @Inject
+    Vertx vertx;
 
     @Inject
     IncidentService incidentService;
@@ -30,18 +33,26 @@ public class IncidentResource {
     @Inject
     ShelterService shelterService;
 
-    @GET
-    @Path("/incidents")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Uni<Response> getIncidents(@QueryParam("name") String name) {
-        return doGetIncidents(name).map(array -> Response.ok(array.encode()).build());
+    @Route(path = "/incidents", methods = HttpMethod.GET)
+
+    void incidents(RoutingExchange ex) {
+
+        String name = ex.request().getParam("name");
+        doGetIncidents(name).subscribe().with(jsonArray -> {
+            ex.response().setStatusCode(200).putHeader("Content-Type", "application/json").end(jsonArray.encode());
+        }, t -> {
+            log.error(t.getMessage(), t);
+            ex.serverError().end();
+        });
     }
 
     private Uni<JsonArray> doGetIncidents(String name) {
+        log.info("Processing request");
         return incidentService.incidentsByName(name)
-                .onItem().produceMulti(jsonArray -> Multi.createFrom().iterable(jsonArray).map(o -> (JsonObject)o))
-                .onItem().produceUni(incident -> missionService.missionByIncidentId(incident.getString("id"))
-                        .onItem().ifNotNull().apply(mission -> {
+                .onItem().produceUni(jsonArray -> {
+                    List<Uni<JsonObject>> unis = new ArrayList<>();
+                    jsonArray.stream().map(o -> (JsonObject)o).forEach(incident -> {
+                        unis.add(missionService.missionByIncidentId(incident.getString("id")).onItem().ifNotNull().apply(mission -> {
                             incident.put("destinationLat", mission.getDouble("destinationLat"));
                             incident.put("destinationLon", mission.getDouble("destinationLong"));
                             JsonArray responderLocationHistory = mission.getJsonArray("responderLocationHistory");
@@ -54,8 +65,7 @@ public class IncidentResource {
                                 incident.put("currentPositionLon", new BigDecimal(incident.getString("lon")).doubleValue());
                             }
                             return incident;
-                        })
-                        .onItem().ifNotNull().produceUni(incident2 -> {
+                        }).onItem().produceUni(incident2 -> {
                             if (incident2.containsKey("destinationLat") && incident2.containsKey("destinationLon")) {
                                 return shelterService.shelter(BigDecimal.valueOf(incident2.getDouble("destinationLat")), BigDecimal.valueOf(incident2.getDouble("destinationLon")))
                                         .onItem().apply(shelter -> {
@@ -65,6 +75,9 @@ public class IncidentResource {
                             } else {
                                 return Uni.createFrom().item(() -> incident2);
                             }
-                        })).concatenate().collectItems().asList().map(JsonArray::new);
+                        }));
+                    });
+                    return Uni.combine().all().unis(unis).combinedWith(l -> jsonArray);
+                });
     }
 }
