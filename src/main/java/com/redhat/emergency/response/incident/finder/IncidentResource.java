@@ -12,7 +12,6 @@ import io.smallrye.mutiny.Uni;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.mutiny.core.Vertx;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,9 +19,6 @@ import org.slf4j.LoggerFactory;
 public class IncidentResource {
 
     private static final Logger log = LoggerFactory.getLogger(IncidentResource.class);
-
-    @Inject
-    Vertx vertx;
 
     @Inject
     IncidentService incidentService;
@@ -51,6 +47,9 @@ public class IncidentResource {
         return incidentService.incidentsByName(name)
                 .onItem().produceUni(jsonArray -> {
                     List<Uni<JsonObject>> unis = new ArrayList<>();
+                    if (jsonArray.isEmpty()) {
+                        return Uni.createFrom().item(() -> jsonArray);
+                    }
                     jsonArray.stream().map(o -> (JsonObject)o).forEach(incident -> {
                         unis.add(missionService.missionByIncidentId(incident.getString("id")).onItem().ifNotNull().apply(mission -> {
                             incident.put("destinationLat", mission.getDouble("destinationLat"));
