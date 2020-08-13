@@ -64,7 +64,7 @@ public class IncidentResource {
                                 incident.put("currentPositionLon", new BigDecimal(incident.getString("lon")).doubleValue());
                             }
                             return incident;
-                        }).onItem().produceUni(incident2 -> {
+                        }).onItem().ifNotNull().produceUni(incident2 -> {
                             if (incident2.containsKey("destinationLat") && incident2.containsKey("destinationLon")) {
                                 return shelterService.shelter(BigDecimal.valueOf(incident2.getDouble("destinationLat")), BigDecimal.valueOf(incident2.getDouble("destinationLon")))
                                         .onItem().apply(shelter -> {
