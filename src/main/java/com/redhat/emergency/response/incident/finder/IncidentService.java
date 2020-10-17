@@ -41,7 +41,7 @@ public class IncidentService {
             name = name + "%25";
         }
         name = name.replaceAll("\\s+", "%20");
-        return client.get("/incidents/byname/" + name).send().onItem().apply(resp -> {
+        return client.get("/incidents/byname/" + name).send().onItem().transform(resp -> {
             if (resp.statusCode() != 200) {
                 log.error("Error when calling incident service. Return code " + resp.statusCode());
                 throw new WebApplicationException(resp.statusCode());
