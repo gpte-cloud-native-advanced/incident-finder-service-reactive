@@ -36,7 +36,7 @@ public class ShelterService {
     }
 
     public Uni<JsonArray> shelters() {
-        return client.get("/shelters").send().onItem().apply(resp -> {
+        return client.get("/shelters").send().onItem().transform(resp -> {
             if (resp.statusCode() != 200) {
                 log.error("Error when calling disaster service. Return code " + resp.statusCode());
                 throw new WebApplicationException(resp.statusCode());
@@ -47,7 +47,7 @@ public class ShelterService {
     }
 
     public Uni<String> shelter(BigDecimal lat, BigDecimal lon) {
-        return shelters().onItem().apply(jsonArray -> jsonArray.stream().map(o -> (JsonObject) o)
+        return shelters().onItem().transform(jsonArray -> jsonArray.stream().map(o -> (JsonObject) o)
                 .filter(shelter -> BigDecimal.valueOf(shelter.getDouble("lat")).equals(lat) && BigDecimal.valueOf(shelter.getDouble("lon")).equals(lon))
                 .map(shelter -> shelter.getString("name")).findFirst().orElse(""));
     }

@@ -34,48 +34,46 @@ public class IncidentResource {
     void incidents(RoutingExchange ex) {
 
         String name = ex.request().getParam("name");
-        doGetIncidents(name).subscribe().with(jsonArray -> {
-            ex.response().setStatusCode(200).putHeader("Content-Type", "application/json").end(jsonArray.encode());
-        }, t -> {
-            log.error(t.getMessage(), t);
-            ex.serverError().end();
-        });
+        doGetIncidents(name).subscribe().with(
+                jsonArray -> ex.response().setStatusCode(200).putHeader("Content-Type", "application/json").end(jsonArray.encode()),
+                t -> {
+                    log.error(t.getMessage(), t);
+                    ex.serverError().end();
+                });
     }
 
     private Uni<JsonArray> doGetIncidents(String name) {
         log.info("Processing request");
         return incidentService.incidentsByName(name)
-                .onItem().produceUni(jsonArray -> {
+                .onItem().transformToUni(jsonArray -> {
                     List<Uni<JsonObject>> unis = new ArrayList<>();
                     if (jsonArray.isEmpty()) {
                         return Uni.createFrom().item(() -> jsonArray);
                     }
-                    jsonArray.stream().map(o -> (JsonObject)o).forEach(incident -> {
-                        unis.add(missionService.missionByIncidentId(incident.getString("id")).onItem().ifNotNull().apply(mission -> {
-                            incident.put("destinationLat", mission.getDouble("destinationLat"));
-                            incident.put("destinationLon", mission.getDouble("destinationLong"));
-                            JsonArray responderLocationHistory = mission.getJsonArray("responderLocationHistory");
-                            if (responderLocationHistory != null && !responderLocationHistory.isEmpty()) {
-                                JsonObject responderLocation = responderLocationHistory.getJsonObject(responderLocationHistory.size() - 1);
-                                incident.put("currentPositionLat", responderLocation.getDouble("lat"));
-                                incident.put("currentPositionLon", responderLocation.getDouble("lon"));
-                            } else {
-                                incident.put("currentPositionLat", new BigDecimal(incident.getString("lat")).doubleValue());
-                                incident.put("currentPositionLon", new BigDecimal(incident.getString("lon")).doubleValue());
-                            }
-                            return incident;
-                        }).onItem().ifNotNull().produceUni(incident2 -> {
-                            if (incident2.containsKey("destinationLat") && incident2.containsKey("destinationLon")) {
-                                return shelterService.shelter(BigDecimal.valueOf(incident2.getDouble("destinationLat")), BigDecimal.valueOf(incident2.getDouble("destinationLon")))
-                                        .onItem().apply(shelter -> {
-                                            incident2.put("destinationName", shelter);
-                                            return incident2;
-                                        });
-                            } else {
-                                return Uni.createFrom().item(() -> incident2);
-                            }
-                        }));
-                    });
+                    jsonArray.stream().map(o -> (JsonObject) o).forEach(incident -> unis.add(missionService.missionByIncidentId(incident.getString("id")).onItem().ifNotNull().transform(mission -> {
+                        incident.put("destinationLat", mission.getDouble("destinationLat"));
+                        incident.put("destinationLon", mission.getDouble("destinationLong"));
+                        JsonArray responderLocationHistory = mission.getJsonArray("responderLocationHistory");
+                        if (responderLocationHistory != null && !responderLocationHistory.isEmpty()) {
+                            JsonObject responderLocation = responderLocationHistory.getJsonObject(responderLocationHistory.size() - 1);
+                            incident.put("currentPositionLat", responderLocation.getDouble("lat"));
+                            incident.put("currentPositionLon", responderLocation.getDouble("lon"));
+                        } else {
+                            incident.put("currentPositionLat", new BigDecimal(incident.getString("lat")).doubleValue());
+                            incident.put("currentPositionLon", new BigDecimal(incident.getString("lon")).doubleValue());
+                        }
+                        return incident;
+                    }).onItem().ifNotNull().transformToUni(incident2 -> {
+                        if (incident2.containsKey("destinationLat") && incident2.containsKey("destinationLon")) {
+                            return shelterService.shelter(BigDecimal.valueOf(incident2.getDouble("destinationLat")), BigDecimal.valueOf(incident2.getDouble("destinationLon")))
+                                    .onItem().transform(shelter -> {
+                                        incident2.put("destinationName", shelter);
+                                        return incident2;
+                                    });
+                        } else {
+                            return Uni.createFrom().item(() -> incident2);
+                        }
+                    })));
                     return Uni.combine().all().unis(unis).combinedWith(l -> jsonArray);
                 });
     }

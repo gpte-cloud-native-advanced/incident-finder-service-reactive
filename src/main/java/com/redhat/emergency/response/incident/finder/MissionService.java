@@ -34,7 +34,7 @@ public class MissionService {
     }
 
     public Uni<JsonObject> missionByIncidentId(String incidentId) {
-        return client.get("/api/missions/incident/" + incidentId).send().onItem().apply( resp -> {
+        return client.get("/api/missions/incident/" + incidentId).send().onItem().transform(resp -> {
             if (resp.statusCode() == 404) {
                 return null;
             } else if (resp.statusCode() != 200) {
